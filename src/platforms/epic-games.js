@@ -2,7 +2,7 @@ import { chromium } from 'patchright';
 import { authenticator } from 'otplib';
 import path from 'path';
 import { existsSync, writeFileSync } from 'fs';
-import { resolve, jsonDb, datetime, filenamify, prompt, confirm, notify, html_game_list, closeContextSafely, log } from '#src/util.js';
+import { resolve, jsonDb, datetime, filenamify, prompt, confirm, notify, html_game_list, closeContextSafely, log, isNetworkErrorMessage } from '#src/util.js';
 import { launchContext, gotoWithRetry } from '#src/browser.js';
 import { checkQualityGate, newQualityTally, recordQualityResult, formatQualityTally } from '#src/quality-lookup.js';
 import { cfg } from '#src/config.js';
@@ -185,7 +185,7 @@ const isRecoverableEpicPageError = (err) => {
       // most cases, but this stays as belt-and-braces for weirder shapes.
       || /page\.goto:? Timeout \d+ms exceeded/i.test(msg)
       || /Timeout \d+ms exceeded.*navigating to/i.test(msg)
-      || /ERR_ADDRESS_UNREACHABLE|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|ERR_NETWORK_CHANGED|ERR_CONNECTION_RESET|ERR_TIMED_OUT/i.test(msg);
+      || isNetworkErrorMessage(msg);
 };
 
 // Critical-path gotos only (URL_CLAIM at run start, URL_LOGIN in the sign-in

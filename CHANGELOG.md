@@ -4,6 +4,21 @@ Release notes for [Feldorn's Free Games Claimer](README.md). Most recent at the 
 
 ---
 
+## What's new in 2.12.10
+
+**Fix: network outages no longer trigger the "report this error" banner.**
+
+When the container briefly loses DNS or connectivity, every site in that run fails with a Chromium network error (`net::ERR_NAME_NOT_RESOLVED`, `ERR_INTERNET_DISCONNECTED`, `ERR_CONNECTION_RESET`, …). These were already treated as "watching" the first time, but as soon as one recurred it was promoted to a real error and the banner asked you to file a GitHub report — even though nothing in the claimer can fix a host-side DNS problem (#158).
+
+- Network-class errors now stay in the transient "watching" state no matter how often they recur. They're still listed under Alerts → Errors, so an ongoing outage is visible, but they no longer drive the banner.
+- They're auto-cleared on the service's next successful run, like other transient errors.
+- Existing entries are cleaned up too: an undecided network-class entry is swept at panel start if the service has succeeded since its last occurrence, and re-tagged as transient on its next hit otherwise.
+- The classifier is now one shared helper (`isNetworkErrorMessage` in `src/util.js`), replacing the copies of the same regex in the Epic and Microsoft runners.
+
+If you're seeing these errors regularly, check the container's DNS: `docker exec free-games-claimer getent hosts www.gog.com` should resolve. Adding `dns: [1.1.1.1, 8.8.8.8]` to the compose service bypasses a flaky local resolver.
+
+---
+
 ## What's new in 2.12.9
 
 **Fix: strict hostname check for third-party discovery URLs — substring matches are gone.**

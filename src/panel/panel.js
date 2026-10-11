@@ -3,7 +3,7 @@ import net from 'node:net';
 import { spawn, execFile } from 'node:child_process';
 import { watch, readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { datetime, notify, jsonDb, normalizeTitle, cleanProfileLocks, readDigestBuffer, markDigestFlushed, stripGpTail, dataDir, rootDir } from '#src/util.js';
+import { datetime, notify, jsonDb, normalizeTitle, cleanProfileLocks, readDigestBuffer, markDigestFlushed, stripGpTail, dataDir, rootDir, isNetworkErrorMessage } from '#src/util.js';
 import { launchContext } from '#src/browser.js';
 import { cfg } from '#src/config.js';
 import { describeConfig, patchConfig, describeEnv, getSchedulerConfig, CONFIG_FILE_PATH, readConfigFile, writeConfigFile, setByPath as cfgSetByPath, deleteByPath as cfgDeleteByPath } from '#src/app-config.js';
@@ -955,6 +955,11 @@ function _recordDiagnosticError(script, errorClass, message, stackLines) {
   // service runs successfully again — swept in recordLastRunSuccess.
   const siteId = _resolveSiteIdFromScript(script);
   const priorSuccess = siteId && lastRunSuccess && lastRunSuccess[siteId];
+  // Network-layer failures (DNS, link down — see NETWORK_ERROR_RE) are
+  // always transient, even on recurrence: intermittent host DNS recurs by
+  // nature and there's nothing in the code to report (#158). They stay
+  // listed with the "watching" pill and clear on the service's next success.
+  const networkClass = isNetworkErrorMessage(message);
   if (!errors[fp]) {
     errors[fp] = {
       script: script || 'unknown',
@@ -967,7 +972,7 @@ function _recordDiagnosticError(script, errorClass, message, stackLines) {
       lastSeen: nowIso,
       count: 1,
       decided: null,
-      transientLikely: !!priorSuccess,
+      transientLikely: !!priorSuccess || networkClass,
     };
   } else {
     errors[fp].lastSeen = nowIso;
@@ -982,7 +987,9 @@ function _recordDiagnosticError(script, errorClass, message, stackLines) {
     errors[fp].context = _captureErrorContext();
     // Recurrence promotes it out of transient-likely — this fingerprint
     // has now been seen more than once, so treat as a real actionable error.
-    if (errors[fp].transientLikely) errors[fp].transientLikely = false;
+    // Network-class errors are the exception (re-tagged here so entries
+    // recorded before #158 get picked up on their next hit).
+    errors[fp].transientLikely = networkClass && !errors[fp].decided;
   }
   // Best-effort persist; failures here don't block the run.
   diagnosticsDb.write().catch(e => console.warn(`[${datetime()}] diagnostics-state write failed: ${e.message}`));
@@ -2226,12 +2233,16 @@ function _sweepStaleUndecidedDiagnostics() {
   for (const fp of Object.keys(errs)) {
     const e = errs[fp];
     if (!e || e.decided) continue;
-    if ((e.count || 0) !== 1) continue;
+    // Network-class entries (#158) are swept at any count — recurrence of
+    // a DNS blip isn't a signal that something in the code is wrong.
+    if ((e.count || 0) !== 1 && !isNetworkErrorMessage(e.message)) continue;
     const entrySiteId = e.siteId || _resolveSiteIdFromScript(e.script);
     if (!entrySiteId) continue;
     const successAt = lastRunSuccess && lastRunSuccess[entrySiteId];
     if (!successAt) continue;
-    const firstSeenMs = Date.parse(e.firstSeen);
+    // lastSeen, not firstSeen: a multi-count network entry must be
+    // superseded by a success AFTER its latest hit (identical for count 1).
+    const firstSeenMs = Date.parse(e.lastSeen || e.firstSeen);
     // lastRunSuccess is "YYYY-MM-DD HH:MM:SS" (local slice) — replace the
     // space with T so Date.parse treats it as ISO-ish. Fall through on
     // any non-finite conversion (defensive).
