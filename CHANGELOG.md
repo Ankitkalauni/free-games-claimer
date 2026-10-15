@@ -4,6 +4,20 @@ Release notes for [Feldorn's Free Games Claimer](README.md). Most recent at the 
 
 ---
 
+## What's new in 2.12.11
+
+**Fix: Epic claims work again after Epic's store redesign.**
+
+Epic's new store design (rolled out around 2026-10-15) removed the two page elements the Epic claimer used to find things: the Get button lost its `data-testid="purchase-cta-button"`, and the checkout popup's `#webPurchaseContainer` wrapper is gone. Every new free game failed with `CTA button never loaded` (#159).
+
+- The Get button is now found as the first unlabelled button in the product sidebar (Add to Cart and Wishlist carry labels in every language). The checkout is found by its `iframe[src*="/checkout?purchaseToken="]` URL.
+- The old selectors are still tried first, so the claimer keeps working if Epic rolls back or A/B-tests the old layout.
+- Side fix: the "CTA flipped to In Library" success check passed its arguments to Playwright in the wrong order, so it always errored and its timeout was ignored. Claims that only showed up through the "confirmed via post-click CTA" fallback should now log a plain `claimed!`.
+
+Thanks to @amphoterism for the diagnosis, the patch, and a verified live claim run. Not yet exercised: bundles, non-English locales, and the EU "I Accept" step. Please report if one of those fails.
+
+---
+
 ## What's new in 2.12.10
 
 **Fix: network outages no longer trigger the "report this error" banner.**

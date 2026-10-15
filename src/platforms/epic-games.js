@@ -46,6 +46,18 @@ const OWNED_TEXTS_GLOBAL = [
 // only — code-review flagged the drift. Now all callers get it uniformly.
 const isOwnedText = (t) => t && t !== 'loading' && OWNED_TEXTS_GLOBAL.some(w => t === w || t.startsWith(w));
 
+// 2026-10-15: Epic's eds_370 store redesign dropped
+// data-testid="purchase-cta-button". The CTA is now the first un-labelled
+// button in the product sidebar (Add to Cart / Wishlist carry aria-labels;
+// Share / Report come after it). The old testid stays first in the list in
+// case Epic restores it. Passed as an argument into waitForFunction calls,
+// which run in the browser context and can't see module scope.
+const CTA_SELECTOR = 'button[data-testid="purchase-cta-button"], section[class*="_sidebar_"] button:not([aria-label])';
+// Same redesign: #webPurchaseContainer is gone. The checkout is now
+// <iframe title="Checkout" src="https://store.epicgames.com/checkout?purchaseToken=…">
+// inside a section[role=dialog]; "Add to library" still lives in that iframe.
+const CHECKOUT_IFRAME = '#webPurchaseContainer iframe, iframe[src*="/checkout?purchaseToken="]';
+
 // v2.11.15 (2026-08-28 feldorn11906 run): Epic's post-successful-claim
 // modal "FINAL STEP — Is Epic Games Launcher installed?" (labels "No, get
 // launcher" / "Yes, it's installed") stays open when the next iteration's
@@ -511,10 +523,11 @@ try {
     // which page caused it without needing a debug rerun.
     try {
       await page.waitForFunction(
-        () => {
-          const btn = document.querySelector('button[data-testid="purchase-cta-button"]');
+        (sel) => {
+          const btn = document.querySelector(sel);
           return btn && /[ei]/i.test(btn.textContent) && btn.textContent != 'Loading';
-        }
+        },
+        CTA_SELECTOR
       );
     } catch (e) {
       log.fail(`CTA button never loaded for ${url} (${e.message?.split('\n')[0] || e}) — skipping this game`);
@@ -530,7 +543,7 @@ try {
     // networkidle is best-effort capped at 5s — strictness loses races,
     // we'd rather under-wait than block a healthy page.
     await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => { });
-    const purchaseBtn = page.locator('button[data-testid="purchase-cta-button"]').first();
+    const purchaseBtn = page.locator(CTA_SELECTOR).first();
     const btnText = (await purchaseBtn.innerText()).toLowerCase(); // barrier to block until page is loaded
     // v2.11.2: locale-portable already-owned detection. Steggl's #141 —
     // German UI renders "In der Bibliothek" instead of "In library", so
@@ -568,7 +581,7 @@ try {
     let title;
     let bundle_includes;
     if (await page.locator('span:text-is("About Bundle")').count()) {
-      title = (await page.locator('span:has-text("Buy"):left-of([data-testid="purchase-cta-button"])').first().innerText()).replace('Buy ', '');
+      title = (await page.locator(`span:has-text("Buy"):left-of(${CTA_SELECTOR})`).first().innerText()).replace('Buy ', '');
       // h1 first didn't exist for bundles but now it does... However h1 would e.g. be 'Fallout® Classic Collection' instead of 'Fallout Classic Collection'
       try {
         bundle_includes = await Promise.all((await page.locator('.product-card-top-row h5').all()).map(b => b.innerText()));
@@ -679,8 +692,8 @@ try {
       let iframe;
       try {
         // it then creates an iframe for the purchase
-        await page.waitForSelector('#webPurchaseContainer iframe'); // TODO needed?
-        iframe = page.frameLocator('#webPurchaseContainer iframe');
+        await page.waitForSelector(CHECKOUT_IFRAME); // TODO needed?
+        iframe = page.frameLocator(CHECKOUT_IFRAME).first();
         // skip game if unavailable in region, https://github.com/vogler/free-games-claimer/issues/46 TODO check games for account's region
         if (await iframe.locator(':has-text("unavailable in your region")').count() > 0) {
           log.skip(title, 'unavailable in your region');
@@ -776,13 +789,13 @@ try {
           // Same owned-text semantics as the shared isOwnedText predicate,
           // inlined here because waitForFunction runs in the browser context
           // where the helper isn't reachable. Kept in sync via OWNED_TEXTS_GLOBAL.
-          page.waitForFunction((ownedList) => {
-            const btn = document.querySelector('button[data-testid="purchase-cta-button"]');
+          page.waitForFunction(({ sel, ownedList }) => {
+            const btn = document.querySelector(sel);
             if (!btn) return false;
             const txt = (btn.innerText || '').trim().toLowerCase();
             if (!txt || txt === 'loading') return false;
             return ownedList.some(t => txt === t || txt.startsWith(t));
-          }, { timeout: cfg.timeout }, OWNED_TEXTS_GLOBAL),
+          }, { sel: CTA_SELECTOR, ownedList: OWNED_TEXTS_GLOBAL }, { timeout: cfg.timeout }),
         ]);
         db.data[user][game_id].status = 'claimed';
         db.data[user][game_id].time = datetime(); // claimed time overwrites failed/dryrun time
@@ -806,7 +819,7 @@ try {
         // 2026-05-14 on Arranger).
         let recoveredViaCta = false;
         try {
-          const ctaLoc = page.locator('button[data-testid="purchase-cta-button"]').first();
+          const ctaLoc = page.locator(CTA_SELECTOR).first();
           // v2.11.5: stability check for the recovery-probe. v2.11.4 could
           // false-positive on a transient owned-flash during Epic's failed-
           // transaction rollback (German UI shows "In der Bibliothek" briefly).
@@ -889,12 +902,13 @@ try {
       try {
         await page.goto(retry.url, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction(
-          () => {
-            const btn = document.querySelector('button[data-testid="purchase-cta-button"]');
+          (sel) => {
+            const btn = document.querySelector(sel);
             return btn && /[ei]/i.test(btn.textContent) && btn.textContent != 'Loading';
-          }
+          },
+          CTA_SELECTOR
         );
-        const purchaseBtn = page.locator('button[data-testid="purchase-cta-button"]').first();
+        const purchaseBtn = page.locator(CTA_SELECTOR).first();
         const btnText = (await purchaseBtn.innerText()).toLowerCase();
         if (btnText === 'in library') {
           log.ok(`${retry.title} — claimed (already in library after retry)`);
@@ -915,8 +929,8 @@ try {
         await purchaseBtn.click({ delay: 11 });
         page.click('button:has-text("Continue")').catch(_ => { });
         page.click('button:has-text("Yes, buy now")').catch(_ => { });
-        await page.waitForSelector('#webPurchaseContainer iframe');
-        const iframe = page.frameLocator('#webPurchaseContainer iframe');
+        await page.waitForSelector(CHECKOUT_IFRAME);
+        const iframe = page.frameLocator(CHECKOUT_IFRAME).first();
         const btnAgree = iframe.locator('button:has-text("I Accept")');
         btnAgree.waitFor().then(() => btnAgree.click()).catch(_ => { });
         // Epic relabeled the confirm button from "Place Order" → "Add to
@@ -947,13 +961,13 @@ try {
           // Same owned-text semantics as the shared isOwnedText predicate,
           // inlined here because waitForFunction runs in the browser context
           // where the helper isn't reachable. Kept in sync via OWNED_TEXTS_GLOBAL.
-          page.waitForFunction((ownedList) => {
-            const btn = document.querySelector('button[data-testid="purchase-cta-button"]');
+          page.waitForFunction(({ sel, ownedList }) => {
+            const btn = document.querySelector(sel);
             if (!btn) return false;
             const txt = (btn.innerText || '').trim().toLowerCase();
             if (!txt || txt === 'loading') return false;
             return ownedList.some(t => txt === t || txt.startsWith(t));
-          }, { timeout: cfg.timeout }, OWNED_TEXTS_GLOBAL),
+          }, { sel: CTA_SELECTOR, ownedList: OWNED_TEXTS_GLOBAL }, { timeout: cfg.timeout }),
         ]);
         const game_id = page.url().split('/').pop();
         db.data[user][game_id].status = 'claimed';
