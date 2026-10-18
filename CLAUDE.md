@@ -17,10 +17,10 @@
 
 ## Current live state (update at end of each session)
 
-- **Version shipped:** v2.12.12 → HEAD may be past this; check `package.json` and latest git tag.
+- **Version shipped:** v2.12.12 (live in container since 2026-10-18). HEAD is past the tag by docs-only commit 22e3a74 (HA `recent_claims` docs, untagged). Check `package.json` and latest git tag.
 - **Container:** `ghcr.io/feldorn/free-games-claimer:latest`, running from `~/docker/docker-compose.yml`. Compose service name = `free-games-claimer`.
 - **Open PRs:** none.
-- **Open issues:** rolling. See `gh issue list --state open` and the 2-week close rule below.
+- **Open issues:** rolling. See `gh issue list --state open` and the 2-week close rule below. As of 2026-10-18: #158, #160, #161, #162, #163 open, all answered and waiting on the reporter. #160/#162/#163 are the Epic session/anti-bot cluster (datacenter IP + cookie import).
 - **v2.12 backlog:** shipped as helper infrastructure only, awaiting live-account data collection. Plan file at `~/.claude/plans/v2.12-live-account-followups.md`.
 
 ## Operating model in one paragraph
