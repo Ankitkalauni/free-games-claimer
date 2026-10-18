@@ -4,6 +4,20 @@ Release notes for [Feldorn's Free Games Claimer](README.md). Most recent at the 
 
 ---
 
+## What's new in 2.12.12
+
+**Fix: a lost Epic session now says so, instead of "failed to claim" on every game.**
+
+Sometimes the Epic session dies between the login check at the start of the run and the game page. The panel's Check still shows you as logged in, but clicking Get sends the browser to Epic's login page. Before this release every free game then sat through a 60-second timeout, logged a generic `✗ failed to claim`, and the run still finished as a success (#162).
+
+- When a claim fails and the page has landed on Epic's login page (or the header says signed out), the claimer stops trying the remaining games.
+- The run ends with one clear error, `Epic session lost mid-run — re-login…`, and a matching notification. It no longer counts as a successful run.
+- The cart link for the failed games is still logged, so you can claim them by hand.
+
+To fix it: log in again from the Sessions tab or via noVNC. If Check still says you're logged in, log out of Epic in that browser first, then log back in.
+
+---
+
 ## What's new in 2.12.11
 
 **Fix: Epic claims work again after Epic's store redesign.**

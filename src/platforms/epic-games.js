@@ -438,6 +438,10 @@ try {
   // 2026-05-14: 6 URLs in, 5 logged, 1 silently deduped — looked like
   // a missing game).
   let dedupedVariants = 0;
+  // v2.12.12 (#162): set when a failed claim lands on Epic's login page —
+  // the session died between the startup login check and the product
+  // page. Remaining games would each burn a 60s timeout the same way.
+  let sessionLost = false;
 
   for (const url of urls) {
     if (cfg.time) console.time('claim game');
@@ -860,6 +864,11 @@ try {
             log.warn(`page.screenshot failed for ${title} (${String(e.message || e).split('\n')[0]}) — skipping capture`);
           }
           db.data[user][game_id].status = 'failed';
+          if (/epicgames\.com\/id\/login/.test(page.url())
+            || await page.locator('egs-navigation').getAttribute('isloggedin', { timeout: 3000 }).catch(() => null) === 'false') {
+            sessionLost = true;
+            log.warn('Epic session lost mid-run — the claim redirected to the login page');
+          }
           if (iframe && (captchaDetected || await iframe.locator('#h_captcha_challenge_checkout_free_prod iframe').count().catch(() => 0) > 0)) {
             captchaDetected = true;
             notify_game.captcha = true;
@@ -874,6 +883,8 @@ try {
           notify_game.details = `<a href="${url}">View game</a>`;
         }
       }
+
+      if (sessionLost) break;
 
       const p = screenshot(`${game_id}.png`);
       if (!existsSync(p)) {
@@ -894,7 +905,7 @@ try {
   }
 
   const captchaRetries = notify_games.filter(g => g.captcha && g.status === 'failed');
-  if (captchaRetries.length) {
+  if (captchaRetries.length && !sessionLost) {
     log.info(`Retrying ${captchaRetries.length} captcha-failed game(s) in 60s...`);
     await page.waitForTimeout(60000);
     for (const retry of captchaRetries) {
@@ -1011,6 +1022,12 @@ try {
     } else {
       log.warn(`Cart fallback — 0/${failedGames.length} failed game(s) matched to offer IDs`);
     }
+  }
+  // Not an `ok` run: throwing here skips the success marker (so the panel
+  // doesn't count it as a clean run) and surfaces one clear error +
+  // notification instead of a generic per-game "failed to claim".
+  if (sessionLost) {
+    throw new Error(`Epic session lost mid-run — re-login via the panel's Sessions tab${cfg.novnc_port ? ' or noVNC' : ''} (log out and back in if Check still shows logged in)`);
   }
   // Epic returns each free game twice (PC + Mobile platform variants) and
   // notify_games has one entry per variant. Dedupe by title so the summary
