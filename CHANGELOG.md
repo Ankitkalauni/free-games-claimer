@@ -4,6 +4,19 @@ Release notes for [Feldorn's Free Games Claimer](README.md). Most recent at the 
 
 ---
 
+## What's new in 2.12.13
+
+**Fix: a run where a service failed no longer shows as successful.**
+
+The panel runs the services one after another and used the exit code of the *last* one as the result of the whole run. An Epic exception in the middle of the chain (like 2.12.12's `Epic session lost` error) was logged, but the run still ended as `exit 0`. Logs showed ✓, the Sessions strip said everything was fine, and Home Assistant's `last_run_status` read `success` (#163).
+
+- Every service still runs, but the run now exits with the last non-zero code from any of them.
+- A run where any game failed to claim also counts as "last run had errors", even when the service itself exited cleanly. Examples: an Epic claim that ended early because the page closed, or a Prime game that needs account linking.
+- Microsoft Rewards still marks today's run as done when it reached its end-of-run summary, so a failure in an earlier service doesn't make the separate MS schedule run it a second time.
+- `CLAIM_CMD` / `CLAIM_CMD_MANUAL` overrides run exactly as written. If you use `;` in yours, it still reports only the last command's exit code.
+
+---
+
 ## What's new in 2.12.12
 
 **Fix: a lost Epic session now says so, instead of "failed to claim" on every game.**

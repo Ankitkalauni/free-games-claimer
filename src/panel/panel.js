@@ -1142,7 +1142,12 @@ function buildClaimCommand({ manual = false, sites = null } = {}) {
     const ids = [entry.id].concat(entry.linkedWith ? [entry.linkedWith] : []);
     if (ids.some(id => targetSet.has(id))) parts.push('node ' + entry.script);
   }
-  return parts.length ? parts.join('; ') : null;
+  if (!parts.length) return null;
+  if (parts.length === 1) return parts[0];
+  // A plain `a; b; c` chain exits with the LAST script's code, so an Epic
+  // exception mid-chain still finished the run as success/exit 0 (#163).
+  // Keep running every script, but remember the last non-zero exit.
+  return 'rc=0; ' + parts.map(p => p + ' || rc=$?').join('; ') + '; exit $rc';
 }
 
 // Env overrides let people keep the original hard-coded pipelines if they
@@ -1852,6 +1857,10 @@ function runAllScripts({ source = 'panel', sites = null, extraEnv = null } = {})
   // marker on clean exit; the runner sums the metrics across all of
   // them into a single run-complete line.
   const runAgg = { services: 0, claimed: 0, skipped: 0, failed: 0, alreadyOwned: 0, tracked: 0, new: 0, pointsEarned: 0, onPage: 0, coins: 0 };
+  // microsoft.js reached its end-of-session summary. Decides whether to mark
+  // today's MS schedule fired now that the chain exit code also reflects
+  // failures in earlier scripts.
+  let msReportedOk = false;
 
   // detached:true makes bash the leader of a new process group so the
   // Stop endpoint can SIGTERM the whole group (bash + node children +
@@ -1909,6 +1918,7 @@ function runAllScripts({ source = 'panel', sites = null, extraEnv = null } = {})
       // markers (microsoft + microsoft-mobile) at the end of the run.
       for (const m of text.matchAll(/\[run\] service=(\S+) ok((?:\s+\w+=\d+)*)/g)) {
         recordLastRunSuccess(m[1]);
+        if (m[1] === 'microsoft' || m[1] === 'microsoft-mobile') msReportedOk = true;
         runAgg.services++;
         for (const f of m[2].matchAll(/(\w+)=(\d+)/g)) {
           if (runAgg[f[1]] != null) runAgg[f[1]] += Number(f[2]);
@@ -1997,7 +2007,10 @@ function runAllScripts({ source = 'panel', sites = null, extraEnv = null } = {})
     };
 
     child.on('close', code => {
-      runStatus = code === 0 ? 'success' : 'finished';
+      // 'finished' = "last run had errors" (Sessions strip, Logs ✗, HA
+      // last_run_status). Per-item failures count too: a service can exit
+      // 0 after a claim failed (e.g. Epic's page-closed early exit).
+      runStatus = code === 0 && !runAgg.failed ? 'success' : 'finished';
       // Run-level footer summarises the aggregated [run] markers. claimed
       // and skipped always show (even when zero) so users can scan
       // vertically for the headline counts. Other fields appear only when
@@ -2035,7 +2048,9 @@ function runAllScripts({ source = 'panel', sites = null, extraEnv = null } = {})
       // loop won't re-fire later the same day. Without this, a manual
       // 09:00 click + scheduled 10:48 fire would double-run MS.
       // Basename, not `node <path>`: the registry owns the path, and it moves.
-      if (code === 0 && /\bmicrosoft\.js\b/.test(cmd)) {
+      // A non-zero chain exit can now come from an earlier script, so also
+      // accept microsoft.js's own [run] marker as proof that it ran.
+      if ((code === 0 || msReportedOk) && /\bmicrosoft\.js\b/.test(cmd)) {
         try { markMsRunFiredToday(); } catch {}
       }
       // Persist the scheduler-main completion timestamp so a panel
