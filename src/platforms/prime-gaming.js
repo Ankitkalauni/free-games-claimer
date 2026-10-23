@@ -16,6 +16,10 @@ const screenshot = (...a) => resolve(cfg.dir.screenshots, 'prime-gaming', ...a);
 const BASE_URL = cfg.pg_base_url;
 const URL_CLAIM = `${BASE_URL}/claims/home`;
 
+// "Your code: XXXX" — the label is localized (#160), so drop whatever
+// precedes the first colon. Codes themselves never contain one.
+const stripCodeLabel = s => s.replace(/^[^:]*:\s*/, '').trim();
+
 log.section(`Prime Gaming (v${siteVersion('prime-gaming')})`);
 
 const db = await jsonDb('prime-gaming.json', {});
@@ -517,7 +521,9 @@ try {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     if (cfg.debug) await page.pause();
     const item_text = await page.innerText('[data-a-target="DescriptionItemDetails"]');
-    const store = item_text.toLowerCase().replace(/.* on /, '').slice(0, -1);
+    // "… for PC or Mac on GOG.com." — the preposition is localized
+    // ("… auf GOG.com." on luna.amazon.de, #160), so accept the common ones.
+    const store = item_text.toLowerCase().replace(/.* (?:on|auf|sur|en|su|em|no|op|na) /, '').replace(/\.$/, '');
     log.game(title, store);
     // v2.12.0 (#148): quality gate for external Prime games (Epic/GOG/
     // Steam/MS Store keys forwarded from Prime). Same shape as internal.
@@ -534,7 +540,10 @@ try {
     if (cfg.pg_timeLeft && await skipBasedOnTime(url)) { skippedCount++; continue; }
     if (cfg.dryrun) { skippedCount++; continue; }
     if (cfg.interactive && !await confirm()) { skippedCount++; continue; }
-    await Promise.any([page.click('[data-a-target="buy-box"] .tw-button:has-text("Get game")'), page.click('[data-a-target="buy-box"] .tw-button:has-text("Claim")'), page.click('.tw-button:has-text("Complete Claim")'), page.waitForSelector('[data-a-target="LinkAccountModal"]'), page.waitForSelector('.thank-you-title:has-text("Success")')]); // waits for navigation
+    // buy-box_call-to-action-text is the button label's own target, so it
+    // works in any locale ("Spiel holen" on luna.amazon.de, #160); the
+    // has-text() pair stays as a fallback for older page shapes.
+    await Promise.any([page.click('[data-a-target="buy-box_call-to-action-text"]'), page.click('[data-a-target="buy-box"] .tw-button:has-text("Get game")'), page.click('[data-a-target="buy-box"] .tw-button:has-text("Claim")'), page.click('.tw-button:has-text("Complete Claim")'), page.waitForSelector('[data-a-target="LinkAccountModal"]'), page.waitForSelector('.thank-you-title:has-text("Success")')]); // waits for navigation
     await page.waitForTimeout(2000);
     db.data[user][title] ||= { title, time: datetime(), url, store };
     const notify_game = { title, url };
@@ -573,7 +582,7 @@ try {
         try {
           code = await Promise.any([
             page.inputValue('input[type="text"]'),
-            page.textContent('[data-a-target="ClaimStateClaimCodeContent"]').then(s => s.replace(/^Your code:\s*/i, '').trim()),
+            page.textContent('[data-a-target="ClaimStateClaimCodeContent"]').then(stripCodeLabel),
           ]);
         } catch { /* code selectors missed — fall through to the standard 'not implemented' path */ }
         if (code) {
@@ -602,7 +611,7 @@ try {
         // fall through if code extraction failed → generic 'not implemented' path
       }
       if (store in redeem) {
-        const code = await Promise.any([page.inputValue('input[type="text"]'), page.textContent('[data-a-target="ClaimStateClaimCodeContent"]').then(s => s.replace('Your code: ', ''))]); // input: Legacy Games; text: gog.com
+        const code = await Promise.any([page.inputValue('input[type="text"]'), page.textContent('[data-a-target="ClaimStateClaimCodeContent"]').then(stripCodeLabel)]); // input: Legacy Games; text: gog.com
         if (store == 'legacy games') { // may be different URL like https://legacygames.com/primeday/puzzleoftheyear/
           redeem[store] = await page.locator('li:has-text("Click here") a').getAttribute('href'); // full text: Click here to enter your redemption code.
         }

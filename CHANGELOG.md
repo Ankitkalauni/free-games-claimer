@@ -4,6 +4,18 @@ Release notes for [Feldorn's Free Games Claimer](README.md). Most recent at the 
 
 ---
 
+## What's new in 2.12.15
+
+**Fix: Prime Gaming external claims (GOG, Microsoft Store, Legacy Games keys) on non-English Amazon sites (#160).**
+
+On luna.amazon.de the claim button says "Spiel holen", and Prime looked only for the English labels "Get game" and "Claim", so every external game timed out after 60 seconds. Two more English-only steps would have broken the redeem right after:
+
+- The claim button is now found by its page attribute instead of its label, so it works in any language. The old label matches stay as a fallback.
+- The store name ("… auf GOG.com" in German) is read with the common German, French, Spanish, Italian, Portuguese, Dutch and Polish prepositions, not just "on". Before, a German page never matched GOG, so the key wasn't auto-redeemed.
+- The "Your code:" label is removed in any language before the key is stored or redeemed.
+
+---
+
 ## What's new in 2.12.14
 
 **Fix: Check no longer says "logged in" to Epic when claims would fail (#163).**
