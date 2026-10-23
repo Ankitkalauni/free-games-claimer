@@ -376,14 +376,14 @@ async function verifyAndClose() {
   const result = await site.checkLogin(page);
 
   if (result.loggedIn) {
-    console.log(`[${datetime()}] Login verified for ${site.name} as ${result.user}. Saving session.`);
+    console.log(`[${datetime()}] Login verified for ${site.name} as ${result.user}. Saving session.${result.warning ? ` Warning: ${result.warning}` : ''}`);
     siteStatus[siteId] = { status: 'logged_in', user: result.user, checkedAt: datetime() };
     await context.close();
     activeBrowser = null;
-    return { success: true, loggedIn: true, user: result.user, site: siteId };
+    return { success: true, loggedIn: true, user: result.user, site: siteId, warning: result.warning || null };
   } else {
-    console.log(`[${datetime()}] Login NOT detected for ${site.name}. Browser remains open.`);
-    return { success: true, loggedIn: false, site: siteId, message: 'Login not detected. Please complete the login process and try again.' };
+    console.log(`[${datetime()}] Login NOT detected for ${site.name}. Browser remains open.${result.reason ? ` ${result.reason}` : ''}`);
+    return { success: true, loggedIn: false, site: siteId, message: result.reason ? `Login not complete: ${result.reason}` : 'Login not detected. Please complete the login process and try again.' };
   }
 }
 
@@ -424,7 +424,7 @@ async function checkSiteStatus(siteId) {
       user: result.user || null,
       checkedAt: datetime(),
     };
-    console.log(`[${datetime()}] ${site.name}: ${result.loggedIn ? `logged in as ${result.user}` : 'not logged in'}`);
+    console.log(`[${datetime()}] ${site.name}: ${result.loggedIn ? `logged in as ${result.user}` : 'not logged in'}${result.reason || result.warning ? ` — ${result.reason || result.warning}` : ''}`);
     return { ...result, site: siteId };
   } catch (e) {
     console.error(`[${datetime()}] Check failed for ${site.name}:`, e.message);
@@ -537,6 +537,8 @@ async function importSiteCookies(siteId, rawCookies) {
     targetHost,
     loggedIn: !!checkResult.loggedIn,
     user: checkResult.user || null,
+    reason: checkResult.reason || null,
+    warning: checkResult.warning || null,
   };
 }
 
@@ -8879,7 +8881,8 @@ async function verifyLogin() {
   try {
     const r = await api('POST', '/verify');
     if (r.loggedIn) {
-      showToast('Logged in as ' + r.user + '! Session saved.', 'success');
+      if (r.warning) showToast('Logged in as ' + r.user + ', but: ' + r.warning, 'info', 12000);
+      else showToast('Logged in as ' + r.user + '! Session saved.', 'success');
       hideVnc();
     } else {
       showToast(r.message || 'Login not detected. Keep trying.', 'error');
@@ -8907,7 +8910,9 @@ async function checkSite(siteId) {
   try {
     const r = await api('POST', '/check', { site: siteId });
     if (r.error) showToast(r.error, 'error');
+    else if (r.loggedIn && r.warning) showToast(siteName + ': logged in as ' + r.user + ', but: ' + r.warning, 'info', 12000);
     else if (r.loggedIn) showToast(siteName + ': logged in as ' + r.user, 'success');
+    else if (r.reason) showToast(siteName + ': not logged in — ' + r.reason, 'error', 12000);
     else showToast(siteName + ': not logged in', 'error');
   } catch (e) { showToast('Error: ' + e.message, 'error'); }
   busy = false;
@@ -8982,9 +8987,10 @@ async function submitCookies() {
     if (result.success) {
       const note = result.loggedIn
         ? 'Imported ' + result.applied + ' cookie(s); session check passed' + (result.user ? ' (logged in as ' + result.user + ')' : '')
-        : 'Imported ' + result.applied + ' cookie(s); session check still says not logged in (cookies may be expired or missing the auth cookie)';
+        : 'Imported ' + result.applied + ' cookie(s); session check still says not logged in (' + (result.reason || 'cookies may be expired or missing the auth cookie') + ')';
       closeCookieModal();
-      showToast(note, result.loggedIn ? 'success' : 'info', 6000);
+      if (result.loggedIn && result.warning) showToast(note + ', but: ' + result.warning, 'info', 12000);
+      else showToast(note, result.loggedIn ? 'success' : 'info', result.reason ? 12000 : 6000);
       await refreshState();
     } else {
       setCookieMsg(result.error || 'Import failed', 'error');

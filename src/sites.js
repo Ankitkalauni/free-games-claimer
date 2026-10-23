@@ -54,6 +54,7 @@ import path from 'node:path';
 import { devices } from 'patchright';
 import { cfg } from './config.js';
 import { ROOT_DIR, RUNNER_NAME_RE, platformFile } from './paths.js';
+import { readEpicAccountSession, EPIC_NO_ACCOUNT_SESSION, epicNotRememberedWarning } from './epic-session.js';
 
 // Resolves a runner through the '#platforms/*' alias in package.json, so the
 // directory is declared once and serves both `import` and the spawned
@@ -216,7 +217,11 @@ export const SITES = [
         const isLoggedIn = await nav.getAttribute('isloggedin');
         if (isLoggedIn === 'true') {
           const user = await nav.getAttribute('displayname');
-          return { loggedIn: true, user: user || 'unknown' };
+          // The header only reflects the store's refresh token, which
+          // outlives the account session claims need (#163).
+          const acct = await readEpicAccountSession(page.context());
+          if (!acct.ok) return { loggedIn: false, user: user || null, reason: EPIC_NO_ACCOUNT_SESSION };
+          return { loggedIn: true, user: user || 'unknown', ...(!acct.remembered && { warning: epicNotRememberedWarning(acct.expiresAt) }) };
         }
         return { loggedIn: false };
       } catch (e) {

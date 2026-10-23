@@ -8,6 +8,7 @@ import { checkQualityGate, newQualityTally, recordQualityResult, formatQualityTa
 import { cfg } from '#src/config.js';
 import { siteVersion } from '#src/sites.js';
 import { getMobileGames } from '#src/epic-games-mobile.js';
+import { readEpicAccountSession, EPIC_NO_ACCOUNT_SESSION, epicNotRememberedWarning } from '#src/epic-session.js';
 import { fetchGamerPowerGiveaways, filterFor as filterGpFor, resolveGamerPowerHref, unhandledPlatforms as gpUnhandled } from '#src/gamerpower.js';
 import { fetchFGFPosts, filterFor as filterFgfFor, unhandledPlatforms as fgfUnhandled, cleanTitle as fgfClean } from '#src/freegamefindings.js';
 
@@ -221,8 +222,23 @@ try {
   // page.click('button:has-text("Accept All Cookies")').catch(_ => { }); // Not needed anymore since we set the cookie above. Clicking this did not always work since the message was animated in too slowly.
   page.locator('button:has-text("Continue")').click().catch(_ => { }); // already logged in, but need to accept updated "Epic Games Privacy Policy"
 
-  while (await page.locator('egs-navigation').getAttribute('isloggedin') != 'true') {
-    log.warn('Not signed in');
+  // The store header alone isn't proof: its refresh token outlives the
+  // account session that Get/checkout needs, so a profile can look signed
+  // in and still bounce every claim to /id/login (#163).
+  const signedIn = async () => {
+    if (await page.locator('egs-navigation').getAttribute('isloggedin') != 'true') {
+      log.warn('Not signed in');
+      return false;
+    }
+    const acct = await readEpicAccountSession(context);
+    if (!acct.ok) {
+      log.warn(`Not signed in — ${EPIC_NO_ACCOUNT_SESSION}`);
+      return false;
+    }
+    if (!acct.remembered) log.warn(epicNotRememberedWarning(acct.expiresAt));
+    return true;
+  };
+  while (!await signedIn()) {
     if (cfg.nowait) process.exit(1);
     if (cfg.novnc_port) log.info(`Open http://localhost:${cfg.novnc_port} to login inside the docker container`);
     if (!cfg.debug) context.setDefaultTimeout(cfg.login_timeout); // give user some extra time to log in

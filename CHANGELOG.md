@@ -4,6 +4,20 @@ Release notes for [Feldorn's Free Games Claimer](README.md). Most recent at the 
 
 ---
 
+## What's new in 2.12.14
+
+**Fix: Check no longer says "logged in" to Epic when claims would fail (#163).**
+
+An Epic profile holds two separate logins. The store's own login keeps the header showing your name for up to a year. The account login, which the Get button and checkout actually need, lasts about 8 hours and is renewed only by Epic's "remember me" cookie (`EPIC_SSO_RM`). If that cookie is missing, the header still says you're logged in while every claim gets sent to the login page. That's the `Epic session lost mid-run` error behind #162, #163, #164, #167 and #168. A failing profile shared in #163 had the store cookies but no account cookies, and a cookie export that included them claimed right away.
+
+- **Check**, **Verify** after a noVNC login, and **cookie import** now also look for the account cookies. Without them Epic shows as **not logged in**, with the reason. The post-run session check flags it the same way, so you're told to log in again before the next run fails.
+- If the account session is there but not remembered, as after a login without "Remember me" or a cookie export that lacked `EPIC_SSO_RM`, Check still passes but warns when it expires. Scheduled runs after that time would fail.
+- The Epic run checks the same thing at startup. If the account session is missing, it goes into the normal login flow (stored credentials, a notification, or noVNC) instead of starting to claim and failing at the first game. The mid-run `session lost` check from 2.12.12 stays as a backstop.
+
+If you import cookies, export them while logged in to epicgames.com with "Remember me" ticked, and make sure the export includes the `.epicgames.com` cookies, not just `store.epicgames.com`.
+
+---
+
 ## What's new in 2.12.13
 
 **Fix: a run where a service failed no longer shows as successful.**
