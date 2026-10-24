@@ -8,7 +8,7 @@ import { checkQualityGate, newQualityTally, recordQualityResult, formatQualityTa
 import { cfg } from '#src/config.js';
 import { siteVersion } from '#src/sites.js';
 import { getMobileGames } from '#src/epic-games-mobile.js';
-import { readEpicAccountSession, EPIC_NO_ACCOUNT_SESSION, epicNotRememberedWarning } from '#src/epic-session.js';
+import { checkEpicAccountSession } from '#src/epic-session.js';
 import { fetchGamerPowerGiveaways, filterFor as filterGpFor, resolveGamerPowerHref, unhandledPlatforms as gpUnhandled } from '#src/gamerpower.js';
 import { fetchFGFPosts, filterFor as filterFgfFor, unhandledPlatforms as fgfUnhandled, cleanTitle as fgfClean } from '#src/freegamefindings.js';
 
@@ -224,18 +224,20 @@ try {
 
   // The store header alone isn't proof: its refresh token outlives the
   // account session that Get/checkout needs, so a profile can look signed
-  // in and still bounce every claim to /id/login (#163).
+  // in and still bounce every claim to /id/login. checkEpicAccountSession
+  // asks Epic whether it still accepts the session (#163).
   const signedIn = async () => {
     if (await page.locator('egs-navigation').getAttribute('isloggedin') != 'true') {
       log.warn('Not signed in');
       return false;
     }
-    const acct = await readEpicAccountSession(context);
+    const acct = await checkEpicAccountSession(context);
+    if (acct.probe === 'unknown') log.info(`Couldn't confirm the Epic account session with Epic (${acct.error || `HTTP ${acct.status}`}) — going by cookies`);
     if (!acct.ok) {
-      log.warn(`Not signed in — ${EPIC_NO_ACCOUNT_SESSION}`);
+      log.warn(`Not signed in — ${acct.reason}`);
       return false;
     }
-    if (!acct.remembered) log.warn(epicNotRememberedWarning(acct.expiresAt));
+    if (acct.warning) log.warn(acct.warning);
     return true;
   };
   while (!await signedIn()) {

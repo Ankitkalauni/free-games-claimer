@@ -17,6 +17,17 @@
 // EPIC_SSO alone is enough for one run but expires ~8h after login; only
 // EPIC_SSO_RM lets Epic re-mint it, so a daily schedule needs RM.
 //
+// Cookie names alone can't settle it either way: Dr4w's profile in #163 had
+// EPIC_SSO_RM and still bounced to /id/login. Tested on a live profile
+// (2026-10-24): EPIC_SESSION_AP (path-scoped, kept in the profile between
+// runs) authenticates with no EPIC_SSO at all, while EPIC_SSO_RM by itself
+// gets a 401 and no page navigation restores the session. So we also ask
+// Epic: GET /id/api/account is read-only, 200 with the account JSON when the
+// session is live, 401 errors.com.epicgames.unauthorized when it isn't.
+// Anything else (Cloudflare page, 5xx, timeout) is "unknown" and we fall back
+// to the cookie check. On a 401 Epic also clears the dead EPIC_SSO_RM. Don't
+// swap in /id/api/redirect: it mints a launcher authorization code per call.
+//
 // Zero local imports — sites.js and the runner both pull this in.
 
 const ACCOUNT_URL = 'https://www.epicgames.com/';
@@ -40,6 +51,49 @@ export function epicAccountSession(cookies, nowMs = Date.now()) {
 
 export async function readEpicAccountSession(context) {
   return epicAccountSession(await context.cookies(ACCOUNT_URL));
+}
+
+const PROBE_URL = 'https://www.epicgames.com/id/api/account';
+
+// 'live' | 'dead' | 'unknown' from the probe's HTTP status + body text.
+export function classifyAccountProbe(status, body) {
+  let json = null;
+  try { json = JSON.parse(body); } catch { /* HTML challenge page etc. */ }
+  if (status === 200 && json && json.id) return 'live';
+  if ((status === 401 || status === 403) && json && /^errors\.com\.epicgames\./.test(String(json.errorCode || ''))) return 'dead';
+  return 'unknown';
+}
+
+// page.request / context.request share the context's cookie jar, and Epic's
+// Set-Cookie (an RM-minted EPIC_SSO) lands back in it.
+export async function probeEpicAccount(context, timeout = 15000) {
+  try {
+    const r = await context.request.get(PROBE_URL, { headers: { accept: 'application/json' }, maxRedirects: 0, timeout });
+    const status = r.status();
+    return { state: classifyAccountProbe(status, await r.text()), status };
+  } catch (e) {
+    return { state: 'unknown', status: null, error: String(e && e.message || e).split('\n')[0].slice(0, 200) };
+  }
+}
+
+// Combines the cookie read with the live probe. `ok` false → treat as signed
+// out; `reason` says why. `warning` is set when the session works now but
+// nothing will renew it.
+export function epicSessionVerdict(acct, probe) {
+  const warning = !acct.remembered ? epicNotRememberedWarning(acct.expiresAt) : null;
+  if (probe.state === 'dead') return { ok: false, reason: epicRejectedReason(probe.status), probe: probe.state };
+  if (probe.state === 'live') return { ok: true, warning, probe: probe.state };
+  if (!acct.ok) return { ok: false, reason: EPIC_NO_ACCOUNT_SESSION, probe: probe.state };
+  return { ok: true, warning, probe: probe.state };
+}
+
+export async function checkEpicAccountSession(context) {
+  const [acct, probe] = await Promise.all([readEpicAccountSession(context), probeEpicAccount(context)]);
+  return { ...epicSessionVerdict(acct, probe), status: probe.status, error: probe.error };
+}
+
+export function epicRejectedReason(status) {
+  return `store shows logged in, but Epic rejected the account session (account check returned HTTP ${status}) — claims would redirect to the login page. Log out and back in, or import a fresh cookie export that includes the .epicgames.com cookies.`;
 }
 
 export const EPIC_NO_ACCOUNT_SESSION = 'store shows logged in, but the Epic account session is gone (no EPIC_SSO / EPIC_SSO_RM cookie) — claims would redirect to the login page. Log out and back in, or import a fresh cookie export that includes the .epicgames.com cookies.';

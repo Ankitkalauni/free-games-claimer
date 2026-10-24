@@ -4,6 +4,18 @@ Release notes for [Feldorn's Free Games Claimer](README.md). Most recent at the 
 
 ---
 
+## What's new in 2.12.16
+
+**Fix: Check now asks Epic whether your login still works, instead of only looking for the cookies (#163).**
+
+2.12.14 made Check look for Epic's account cookies (`EPIC_SSO` / `EPIC_SSO_RM`). That wasn't enough. In #163 a profile with a fresh remember-me cookie passed Check and still failed every claim with `Epic session lost mid-run`. Testing on a live profile showed why cookie names can't answer the question. A remember-me cookie on its own is rejected by Epic, and another session cookie can keep you logged in with no `EPIC_SSO` at all.
+
+- **Check**, **Verify**, **cookie import**, the post-run session check and the Epic run's startup check now make one read-only request to Epic's account API with your profile's cookies. If Epic says you're not authenticated, Epic shows as **not logged in**, with the reason. The run then goes into the normal login flow instead of failing at the first game.
+- If Epic can't be reached for that check (Cloudflare page, outage, timeout), it falls back to the 2.12.14 cookie check, and the run log notes that it did.
+- The "session isn't remembered" warning stays.
+
+---
+
 ## What's new in 2.12.15
 
 **Fix: Prime Gaming external claims (GOG, Microsoft Store, Legacy Games keys) on non-English Amazon sites (#160).**

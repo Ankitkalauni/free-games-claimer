@@ -1,7 +1,8 @@
-// epicAccountSession — run with `node test/epic-session.js`.
-// Cookie sets mirror a working profile (store + account cookies) and
-// Sharpyku's failing one from #163 (store cookies only).
-import { epicAccountSession } from '#src/epic-session.js';
+// epicAccountSession / classifyAccountProbe / epicSessionVerdict — run with
+// `node test/epic-session.js`. Cookie sets mirror a working profile (store +
+// account cookies) and Sharpyku's failing one from #163 (store cookies only).
+// Probe bodies are the shapes /id/api/account returned on 2026-10-24.
+import { epicAccountSession, classifyAccountProbe, epicSessionVerdict } from '#src/epic-session.js';
 
 const NOW = Date.UTC(2026, 9, 23, 12, 0);
 const sec = ms => Math.floor(ms / 1000);
@@ -37,8 +38,42 @@ for (const [label, cookies, expected] of cases) {
   }
 }
 
+const probeCases = [
+  ['200 account JSON', 200, '{"id":"abc","displayName":"x","accountStatus":"ACTIVE"}', 'live'],
+  ['401 unauthorized', 401, '{"errorCode":"errors.com.epicgames.unauthorized","message":"You are not authenticated. Please authenticate."}', 'dead'],
+  ['403 Epic error JSON', 403, '{"errorCode":"errors.com.epicgames.common.missing_permission"}', 'dead'],
+  ['403 Cloudflare challenge', 403, '<html><head><style>.cf_challenge_text_small{}</style>', 'unknown'],
+  ['200 without id', 200, '{}', 'unknown'],
+  ['503', 503, 'upstream error', 'unknown'],
+  ['401 non-JSON', 401, 'Unauthorized', 'unknown'],
+];
+for (const [label, status, body, expected] of probeCases) {
+  const got = classifyAccountProbe(status, body);
+  if (got !== expected) { console.error(`FAIL  probe ${label} → ${got}, expected ${expected}`); fails++; }
+}
+
+const acct = cookies => epicAccountSession(cookies, NOW);
+const verdictCases = [
+  // Dr4w (#163): RM present, Epic still rejects → signed out with a reason.
+  ['RM present, Epic rejects', acct([...store, rm]), { state: 'dead', status: 401 }, { ok: false, reason: /rejected.*HTTP 401/, warning: null }],
+  // Live EPIC_SESSION_AP with no SSO cookie authenticates → not signed out.
+  ['no SSO cookies, Epic accepts', acct(store), { state: 'live', status: 200 }, { ok: true, reason: null, warning: /isn't remembered/ }],
+  ['SSO + RM, Epic accepts', acct([...store, sso, rm]), { state: 'live', status: 200 }, { ok: true, reason: null, warning: null }],
+  ['probe unknown, cookies missing → cookie verdict', acct(store), { state: 'unknown', status: 403 }, { ok: false, reason: /no EPIC_SSO/, warning: null }],
+  ['probe unknown, RM present → ok', acct([...store, rm]), { state: 'unknown', status: null }, { ok: true, reason: null, warning: null }],
+  ['probe unknown, SSO only → ok + warning', acct([...store, sso]), { state: 'unknown', status: 503 }, { ok: true, reason: null, warning: /isn't remembered/ }],
+];
+const matches = (v, want) => want === null ? v == null : want.test(String(v));
+for (const [label, a, probe, want] of verdictCases) {
+  const v = epicSessionVerdict(a, probe);
+  if (v.ok !== want.ok || !matches(v.reason, want.reason) || !matches(v.warning, want.warning)) {
+    console.error(`FAIL  verdict ${label} → ${JSON.stringify(v)}`);
+    fails++;
+  }
+}
+
 if (fails) {
   console.error(`${fails} failure(s)`);
   process.exit(1);
 }
-console.log(`epic-session: ${cases.length} cases pass`);
+console.log(`epic-session: ${cases.length + probeCases.length + verdictCases.length} cases pass`);
