@@ -2,7 +2,7 @@
 // `node test/epic-session.js`. Cookie sets mirror a working profile (store +
 // account cookies) and Sharpyku's failing one from #163 (store cookies only).
 // Probe bodies are the shapes /id/api/account returned on 2026-10-24.
-import { epicAccountSession, classifyAccountProbe, epicSessionVerdict } from '#src/epic-session.js';
+import { epicAccountSession, classifyAccountProbe, epicSessionVerdict, epicImportMissingSessionReason } from '#src/epic-session.js';
 
 const NOW = Date.UTC(2026, 9, 23, 12, 0);
 const sec = ms => Math.floor(ms / 1000);
@@ -72,8 +72,20 @@ for (const [label, a, probe, want] of verdictCases) {
   }
 }
 
+// #162/#163: a store-tab export lacks the /id-scoped EPIC_SESSION_AP.
+const sessionAp = { name: 'EPIC_SESSION_AP', value: 'x', domain: '.epicgames.com', path: '/id', expires: -1 };
+const importCases = [
+  ['store-tab export (store + SSO + RM)', [...store, sso, rm], /no EPIC_SESSION_AP.*\/id\/api\/account/],
+  ['export with EPIC_SESSION_AP', [...store, sso, rm, sessionAp], null],
+  ['empty upload', [], /no EPIC_SESSION_AP/],
+];
+for (const [label, cookies, want] of importCases) {
+  const got = epicImportMissingSessionReason(cookies);
+  if (!matches(got, want)) { console.error(`FAIL  import ${label} → ${got}`); fails++; }
+}
+
 if (fails) {
   console.error(`${fails} failure(s)`);
   process.exit(1);
 }
-console.log(`epic-session: ${cases.length + probeCases.length + verdictCases.length} cases pass`);
+console.log(`epic-session: ${cases.length + probeCases.length + verdictCases.length + importCases.length} cases pass`);

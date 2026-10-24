@@ -5,6 +5,7 @@ import { watch, readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:
 import path from 'node:path';
 import { datetime, notify, jsonDb, normalizeTitle, cleanProfileLocks, readDigestBuffer, markDigestFlushed, stripGpTail, dataDir, rootDir, isNetworkErrorMessage } from '#src/util.js';
 import { launchContext } from '#src/browser.js';
+import { epicImportMissingSessionReason } from '#src/epic-session.js';
 import { cfg } from '#src/config.js';
 import { describeConfig, patchConfig, describeEnv, getSchedulerConfig, CONFIG_FILE_PATH, readConfigFile, writeConfigFile, setByPath as cfgSetByPath, deleteByPath as cfgDeleteByPath } from '#src/app-config.js';
 import { SITES as SITE_REGISTRY, getLoginSitesById, getClaimScriptOrder, getLinkedActiveMap, getClaimDbFiles, getServiceRows, normalizeClaimCommand } from '#src/sites.js';
@@ -468,7 +469,8 @@ function normalizeCookieEntry(c) {
   if (c.secure)   out.secure = true;
   if (c.sameSite) {
     const s = String(c.sameSite).toLowerCase();
-    out.sameSite = s === 'strict' ? 'Strict' : s === 'none' ? 'None' : 'Lax';
+    // Cookie-Editor writes SameSite=None as "no_restriction".
+    out.sameSite = s === 'strict' ? 'Strict' : s === 'none' || s === 'no_restriction' ? 'None' : 'Lax';
   }
   return out;
 }
@@ -531,13 +533,14 @@ async function importSiteCookies(siteId, rawCookies) {
   // the cookies actually activated a session, or stays at "not logged
   // in" if they didn't (expired, missing the auth cookie, etc.).
   const checkResult = await checkSiteStatus(siteId);
+  const hint = siteId === 'epic-games' && !checkResult.loggedIn ? epicImportMissingSessionReason(normalized) : null;
   return {
     applied: normalized.length,
     matchedDomain: matches.length,
     targetHost,
     loggedIn: !!checkResult.loggedIn,
     user: checkResult.user || null,
-    reason: checkResult.reason || null,
+    reason: hint || checkResult.reason || null,
     warning: checkResult.warning || null,
   };
 }

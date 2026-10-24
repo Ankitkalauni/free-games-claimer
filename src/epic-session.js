@@ -28,6 +28,11 @@
 // to the cookie check. On a 401 Epic also clears the dead EPIC_SSO_RM. Don't
 // swap in /id/api/redirect: it mints a launcher authorization code per call.
 //
+// EPIC_SESSION_AP is a session cookie scoped to path /id, so a cookie export
+// taken from a store tab never carries it (the extensions only export what
+// the open tab's URL can see). Without it even a fresh EPIC_SSO gets the 401,
+// and no navigation re-mints it (#162/#163 on 2.12.16). The import says so.
+//
 // Zero local imports — sites.js and the runner both pull this in.
 
 const ACCOUNT_URL = 'https://www.epicgames.com/';
@@ -97,6 +102,13 @@ export function epicRejectedReason(status) {
 }
 
 export const EPIC_NO_ACCOUNT_SESSION = 'store shows logged in, but the Epic account session is gone (no EPIC_SSO / EPIC_SSO_RM cookie) — claims would redirect to the login page. Log out and back in, or import a fresh cookie export that includes the .epicgames.com cookies.';
+
+// Reason for a failed cookie import whose upload lacks EPIC_SESSION_AP;
+// null when it was there (the failure is something else).
+export function epicImportMissingSessionReason(cookies) {
+  if ((cookies || []).some(c => c && c.name === 'EPIC_SESSION_AP')) return null;
+  return 'the export has no EPIC_SESSION_AP cookie, which is Epic\'s account login. It only shows on www.epicgames.com/id pages, so an export from a store tab leaves it out. In the same logged-in browser, open https://www.epicgames.com/id/api/account, export the cookies from that tab and import that file too (the cookies already imported are kept).';
+}
 
 export function epicNotRememberedWarning(expiresAt) {
   const when = expiresAt ? ` at ${expiresAt.toISOString().replace('T', ' ').slice(0, 16)} UTC` : '';

@@ -4,6 +4,18 @@ Release notes for [Feldorn's Free Games Claimer](README.md). Most recent at the 
 
 ---
 
+## What's new in 2.12.17
+
+**Fix: Epic cookie import now says why it fails when the export is missing Epic's account login (#162, #163).**
+
+On 2.12.16, fresh Epic cookie exports were rejected at once with `account check returned HTTP 401`, even with "Remember me" ticked and the .epicgames.com cookies included. The cookie that holds the Epic account login, `EPIC_SESSION_AP`, only applies to `www.epicgames.com/id` pages. Cookie-Editor and EditThisCookie export only the cookies the open tab can see, so an export taken on the store never includes it. Without it Epic rejects the login, even with a fresh `EPIC_SSO` and `EPIC_SSO_RM`, and no page visit brings it back.
+
+- When an Epic import fails and the upload has no `EPIC_SESSION_AP`, the message now says so. It tells you to open https://www.epicgames.com/id/api/account in the same logged-in browser, export from that tab and import that file too. A second import adds to the first one; nothing is replaced.
+- Export and import while that browser is still open: `EPIC_SESSION_AP` is a session cookie and is gone once the browser closes.
+- Cookie-Editor's `"sameSite": "no_restriction"` is now imported as SameSite=None instead of Lax.
+
+---
+
 ## What's new in 2.12.16
 
 **Fix: Check now asks Epic whether your login still works, instead of only looking for the cookies (#163).**
