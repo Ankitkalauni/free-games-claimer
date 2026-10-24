@@ -17,7 +17,7 @@
 
 ## Current live state (update at end of each session)
 
-- **Version shipped:** v2.12.16 (live in container since 2026-10-24). Epic Check/run now verify the session with Epic itself via read-only GET `/id/api/account` (200 live / 401 dead / else fall back to cookies), `src/epic-session.js`. v2.12.15: #160 Prime locale fixes. Check `package.json` and latest git tag.
+- **Version shipped:** v2.12.17 (live in container since 2026-10-24). Failed Epic cookie import now flags a missing `EPIC_SESSION_AP` (path /id session cookie that store-tab exports never include) and points at exporting from /id/api/account. v2.12.16: Epic Check/run now verify the session with Epic itself via read-only GET `/id/api/account` (200 live / 401 dead / else fall back to cookies), `src/epic-session.js`. v2.12.15: #160 Prime locale fixes. Check `package.json` and latest git tag.
 - **Container:** `ghcr.io/feldorn/free-games-claimer:latest`, running from `~/docker/docker-compose.yml`. Compose service name = `free-games-claimer`.
 - **Open PRs:** #166 (Blackbol, Joybuy check-in). 2nd CHANGES_REQUESTED posted 2026-10-23: verify check-in success after the click, drop the dedicated window (run inline like AliExpress).
 - **Open issues:** rolling. See `gh issue list --state open` and the 2-week close rule below. As of 2026-10-23: #158, #160, #161, #162, #163, #164, #167, #168 open. Epic session-lost cluster (#162/#163/#164/#167/#168): Epic rejects the account session (EPIC_SSO_RM alone is NOT enough; EPIC_SESSION_AP carries it between runs). v2.12.16 detects this live; Dr4w (#163) asked for timing/VPS/log 2026-10-24.
