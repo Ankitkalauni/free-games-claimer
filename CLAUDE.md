@@ -17,10 +17,10 @@
 
 ## Current live state (update at end of each session)
 
-- **Version shipped:** v2.12.15 (live in container since 2026-10-23; #160 Prime locale fixes). v2.12.14: Epic Check/run now also require the account session (EPIC_SSO or EPIC_SSO_RM), not just the store header (`src/epic-session.js`). Check `package.json` and latest git tag.
+- **Version shipped:** v2.12.16 (live in container since 2026-10-24). Epic Check/run now verify the session with Epic itself via read-only GET `/id/api/account` (200 live / 401 dead / else fall back to cookies), `src/epic-session.js`. v2.12.15: #160 Prime locale fixes. Check `package.json` and latest git tag.
 - **Container:** `ghcr.io/feldorn/free-games-claimer:latest`, running from `~/docker/docker-compose.yml`. Compose service name = `free-games-claimer`.
 - **Open PRs:** #166 (Blackbol, Joybuy check-in). 2nd CHANGES_REQUESTED posted 2026-10-23: verify check-in success after the click, drop the dedicated window (run inline like AliExpress).
-- **Open issues:** rolling. See `gh issue list --state open` and the 2-week close rule below. As of 2026-10-23: #158, #160, #161, #162, #163, #164, #167, #168 open. Epic session-lost cluster (#162/#163/#164/#167/#168): root cause = missing EPIC_SSO_RM (remember-me); v2.12.14 detects it; consolidated reply on #163 2026-10-23, waiting on reporters' next scheduled runs.
+- **Open issues:** rolling. See `gh issue list --state open` and the 2-week close rule below. As of 2026-10-23: #158, #160, #161, #162, #163, #164, #167, #168 open. Epic session-lost cluster (#162/#163/#164/#167/#168): Epic rejects the account session (EPIC_SSO_RM alone is NOT enough; EPIC_SESSION_AP carries it between runs). v2.12.16 detects this live; Dr4w (#163) asked for timing/VPS/log 2026-10-24.
 - **v2.12 backlog:** shipped as helper infrastructure only, awaiting live-account data collection. Plan file at `~/.claude/plans/v2.12-live-account-followups.md`.
 
 ## Operating model in one paragraph
