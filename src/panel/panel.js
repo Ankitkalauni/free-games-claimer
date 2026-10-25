@@ -6510,12 +6510,16 @@ function fieldRow(path, label, extra) {
     const sensAttr = sensitive ? ' data-sensitive-state="' + sensState + '"' : '';
     inputHtml = '<textarea' + sensAttr + ' oninput="setSettingValue(\\'' + path + '\\', this.value)">' + escapeHtml(value || '') + '</textarea>';
   } else if (f.type === 'array') {
-    // v2.12.0 (#148): text-input on the joined value; comma-or-whitespace
-    // split on change. Schema coerce filters invalid tokens, so a typo
-    // like "epicgames" (missing hyphen) drops silently rather than
-    // rejecting the whole save.
+    // v2.12.0 (#148): text-input on the joined value; comma-or-space
+    // split on change. The schema's validate rejects unknown tokens, so a
+    // typo fails the save with an error toast. The split class uses a
+    // literal space, not the whitespace escape: the regex sits inside a
+    // client string inside PANEL_HTML, the escape lost both backslashes
+    // to the two escape passes, and the class became comma-or-letter-s,
+    // which split "epic-games" into "epic-game" and "steam" into "team"
+    // (#173).
     const asStr = Array.isArray(value) ? value.join(', ') : '';
-    inputHtml = '<input type="text" value="' + escapeHtml(asStr) + '" oninput="setSettingValue(\\'' + path + '\\', this.value.split(/[,\\s]+/).map(s => s.trim()).filter(Boolean))">';
+    inputHtml = '<input type="text" value="' + escapeHtml(asStr) + '" oninput="setSettingValue(\\'' + path + '\\', this.value.split(/[, ]+/).map(s => s.trim()).filter(Boolean))">';
   } else {
     const sensAttr = sensitive ? ' data-sensitive-state="' + sensState + '"' : '';
     inputHtml = '<input type="text"' + sensAttr + ' value="' + escapeHtml(value || '') + '" oninput="setSettingValue(\\'' + path + '\\', this.value)">';

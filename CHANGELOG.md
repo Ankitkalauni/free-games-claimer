@@ -4,6 +4,16 @@ Release notes for [Feldorn's Free Games Claimer](README.md). Most recent at the 
 
 ---
 
+## What's new in 2.12.20
+
+**Fix: the quality filter's "Applies to" setting couldn't be saved with Epic or Steam in it (#173).**
+
+Saving Settings → Advanced → Quality filter → **Applies to** with `epic-games` or `steam` in the list failed with `unknown service 'epic-game'` (or `'team'`), even though the box showed the right names. The panel split the list on commas and on the letter "s" instead of commas and spaces, because an escape in the page's code was lost. Since 2.12.0, a list with only `gog`, `prime-gaming` and `fab` was the only kind that saved. If you set up the quality filter before, open Settings and check that **Applies to** has every service you meant to include.
+
+- The list is now split on commas and spaces, as intended.
+
+---
+
 ## What's new in 2.12.19
 
 **Fix: noVNC could stay dead for 10+ minutes after every container start on some hosts (#172).**
