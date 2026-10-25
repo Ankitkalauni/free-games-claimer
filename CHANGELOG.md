@@ -4,6 +4,14 @@ Release notes for [Feldorn's Free Games Claimer](README.md). Most recent at the 
 
 ---
 
+## What's new in 2.12.21
+
+**Epic: a rejected account session now says why Epic rejected it (#163).**
+
+When Epic turns down the account session (Check, cookie import, or the start of a run), the message used to show only the HTTP status, e.g. `account check returned HTTP 401`. It now also includes the error code Epic sends back, e.g. `HTTP 401, errors.com.epicgames.unauthorized`. In most cases the cause is the missing `EPIC_SESSION_AP` cookie, which the import already points out. For the cases where every cookie is there and Epic still says no, the error code is the next clue, and it's now in the message you'd paste into an issue.
+
+---
+
 ## What's new in 2.12.20
 
 **Fix: the quality filter's "Applies to" setting couldn't be saved with Epic or Steam in it (#173).**

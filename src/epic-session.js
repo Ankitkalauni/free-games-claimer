@@ -69,13 +69,22 @@ export function classifyAccountProbe(status, body) {
   return 'unknown';
 }
 
+// Epic's errorCode from a rejected probe, so the reason says why (#163).
+export function accountProbeErrorCode(body) {
+  try {
+    const code = JSON.parse(body).errorCode;
+    return /^errors\.com\.epicgames\.[\w.-]{1,120}$/.test(String(code || '')) ? code : null;
+  } catch { return null; }
+}
+
 // page.request / context.request share the context's cookie jar, and Epic's
 // Set-Cookie (an RM-minted EPIC_SSO) lands back in it.
 export async function probeEpicAccount(context, timeout = 15000) {
   try {
     const r = await context.request.get(PROBE_URL, { headers: { accept: 'application/json' }, maxRedirects: 0, timeout });
     const status = r.status();
-    return { state: classifyAccountProbe(status, await r.text()), status };
+    const body = await r.text();
+    return { state: classifyAccountProbe(status, body), status, errorCode: accountProbeErrorCode(body) };
   } catch (e) {
     return { state: 'unknown', status: null, error: String(e && e.message || e).split('\n')[0].slice(0, 200) };
   }
@@ -86,7 +95,7 @@ export async function probeEpicAccount(context, timeout = 15000) {
 // nothing will renew it.
 export function epicSessionVerdict(acct, probe) {
   const warning = !acct.remembered ? epicNotRememberedWarning(acct.expiresAt) : null;
-  if (probe.state === 'dead') return { ok: false, reason: epicRejectedReason(probe.status), probe: probe.state };
+  if (probe.state === 'dead') return { ok: false, reason: epicRejectedReason(probe.status, probe.errorCode), probe: probe.state };
   if (probe.state === 'live') return { ok: true, warning, probe: probe.state };
   if (!acct.ok) return { ok: false, reason: EPIC_NO_ACCOUNT_SESSION, probe: probe.state };
   return { ok: true, warning, probe: probe.state };
@@ -97,8 +106,8 @@ export async function checkEpicAccountSession(context) {
   return { ...epicSessionVerdict(acct, probe), status: probe.status, error: probe.error };
 }
 
-export function epicRejectedReason(status) {
-  return `store shows logged in, but Epic rejected the account session (account check returned HTTP ${status}) — claims would redirect to the login page. Log out and back in, or import a fresh cookie export that includes the .epicgames.com cookies.`;
+export function epicRejectedReason(status, errorCode) {
+  return `store shows logged in, but Epic rejected the account session (account check returned HTTP ${status}${errorCode ? `, ${errorCode}` : ''}) — claims would redirect to the login page. Log out and back in, or import a fresh cookie export that includes the .epicgames.com cookies.`;
 }
 
 export const EPIC_NO_ACCOUNT_SESSION = 'store shows logged in, but the Epic account session is gone (no EPIC_SSO / EPIC_SSO_RM cookie) — claims would redirect to the login page. Log out and back in, or import a fresh cookie export that includes the .epicgames.com cookies.';

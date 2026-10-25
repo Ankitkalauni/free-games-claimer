@@ -2,7 +2,7 @@
 // `node test/epic-session.js`. Cookie sets mirror a working profile (store +
 // account cookies) and Sharpyku's failing one from #163 (store cookies only).
 // Probe bodies are the shapes /id/api/account returned on 2026-10-24.
-import { epicAccountSession, classifyAccountProbe, epicSessionVerdict, epicImportMissingSessionReason } from '#src/epic-session.js';
+import { epicAccountSession, classifyAccountProbe, accountProbeErrorCode, epicSessionVerdict, epicImportMissingSessionReason } from '#src/epic-session.js';
 
 const NOW = Date.UTC(2026, 9, 23, 12, 0);
 const sec = ms => Math.floor(ms / 1000);
@@ -52,10 +52,22 @@ for (const [label, status, body, expected] of probeCases) {
   if (got !== expected) { console.error(`FAIL  probe ${label} → ${got}, expected ${expected}`); fails++; }
 }
 
+const errorCodeCases = [
+  ['401 Epic error', '{"errorCode":"errors.com.epicgames.unauthorized","message":"x"}', 'errors.com.epicgames.unauthorized'],
+  ['Cloudflare HTML', '<html>', null],
+  ['non-Epic errorCode', '{"errorCode":"<script>"}', null],
+  ['200 account JSON', '{"id":"abc"}', null],
+];
+for (const [label, body, expected] of errorCodeCases) {
+  const got = accountProbeErrorCode(body);
+  if (got !== expected) { console.error(`FAIL  errorCode ${label} → ${got}, expected ${expected}`); fails++; }
+}
+
 const acct = cookies => epicAccountSession(cookies, NOW);
 const verdictCases = [
   // Dr4w (#163): RM present, Epic still rejects → signed out with a reason.
   ['RM present, Epic rejects', acct([...store, rm]), { state: 'dead', status: 401 }, { ok: false, reason: /rejected.*HTTP 401/, warning: null }],
+  ['Epic rejects with errorCode', acct([...store, rm]), { state: 'dead', status: 401, errorCode: 'errors.com.epicgames.unauthorized' }, { ok: false, reason: /HTTP 401, errors\.com\.epicgames\.unauthorized\)/, warning: null }],
   // Live EPIC_SESSION_AP with no SSO cookie authenticates → not signed out.
   ['no SSO cookies, Epic accepts', acct(store), { state: 'live', status: 200 }, { ok: true, reason: null, warning: /isn't remembered/ }],
   ['SSO + RM, Epic accepts', acct([...store, sso, rm]), { state: 'live', status: 200 }, { ok: true, reason: null, warning: null }],
