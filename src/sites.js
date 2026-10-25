@@ -503,14 +503,17 @@ export const SITES = [
       // and this one was missed in the v2.8.35 sweep.
       const STRUCT_LOGIN_LINK = 'a[href*="/login"], a[href*="/signin" i], button[data-spm*="login" i]';
       const STRUCT_CLAIMABLE  = '#signButton[class*="aecoin-checkInButton"], [id="signButton"][class*="checkInButton"]';
-      const STRUCT_DONE       = '#signButton[class*="aecoin-taskButton"], [id="signButton"][class*="taskButton"]';
-      const loginBtn = page.locator(STRUCT_LOGIN_LINK + ', button:has-text("Log in")');
-      const streak = page.locator(STRUCT_CLAIMABLE + ', h3:text-is("day streak")');
+      // + 2026-10 redesign's today-checked classes (#170/#171), same as auth().
+      const STRUCT_DONE       = '#signButton[class*="aecoin-taskButton"], [id="signButton"][class*="taskButton"], [class*="aecoin-today-checked"], [class*="aecoin-isTodayChecked"]';
+      const loginBtn = page.locator(STRUCT_LOGIN_LINK + ', button:has-text("Log in")').first();
+      const streak = page.locator(STRUCT_CLAIMABLE + ', h3:text-is("day streak")').first();
       // Post-collect state — the "day streak" h3 disappears once the user has
       // claimed today's coins, but "Earn more coins" stays visible. Treat that
       // as logged-in too so users who already collected manually don't get a
       // false "session expired" report from the panel.
-      const collectedToday = page.locator(STRUCT_DONE + ', button:has-text("Earn more coins")');
+      // .first(): the redesign's today-checked classes match several elements
+      // and waitFor() is strict.
+      const collectedToday = page.locator(STRUCT_DONE + ', button:has-text("Earn more coins")').first();
       // AliExpress mobile frequently hangs on initial load — same issue as in
       // aliexpress.js auth(). Auto-reload up to 3 times until either the login
       // button or either logged-in marker appears, then short-circuit.
@@ -530,6 +533,9 @@ export const SITES = [
           ]).catch(() => null);
           if (which === 'streak' || which === 'collectedToday') return { loggedIn: true, user: 'member' };
           if (which === 'login') return { loggedIn: false };
+          // Attached-but-not-visible fallback, same as aliexpress.js auth().
+          if (await streak.count() > 0 || await collectedToday.count() > 0) return { loggedIn: true, user: 'member' };
+          if (await loginBtn.count() > 0) return { loggedIn: false };
         }
         return { loggedIn: false };
       } catch (e) {

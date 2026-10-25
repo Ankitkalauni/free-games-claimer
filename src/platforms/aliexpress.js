@@ -62,16 +62,20 @@ const auth = async url => {
   // matchers entirely — `Zdobądź więcej monet` / `Odbierz`) and #74
   // (Collect button timeout, same root cause on a non-English account).
   const STRUCT_LOGGED_IN_CLAIMABLE = '#signButton[class*="aecoin-checkInButton"], [id="signButton"][class*="checkInButton"]';
-  const STRUCT_LOGGED_IN_DONE      = '#signButton[class*="aecoin-taskButton"], [id="signButton"][class*="taskButton"]';
+  // 2026-10 redesign (data-version="daily", #170/#171): the coin page is
+  // all <div>s — no #signButton, no <button>, no "day streak" h3 — and
+  // marks today's check-in with aecoin-today-checked-* /
+  // aecoin-isTodayChecked-* classes.
+  const STRUCT_LOGGED_IN_DONE      = '#signButton[class*="aecoin-taskButton"], [id="signButton"][class*="taskButton"], [class*="aecoin-today-checked"], [class*="aecoin-isTodayChecked"]';
   const STRUCT_LOGIN_LINK          = 'a[href*="/login"], a[href*="/signin" i], button[data-spm*="login" i]';
-  const loginBtn = page.locator(STRUCT_LOGIN_LINK + ', button:has-text("Log in")');
-  const loggedIn = page.locator(STRUCT_LOGGED_IN_CLAIMABLE + ', h3:text-is("day streak")');
+  const loginBtn = page.locator(STRUCT_LOGIN_LINK + ', button:has-text("Log in")').first();
+  const loggedIn = page.locator(STRUCT_LOGGED_IN_CLAIMABLE + ', h3:text-is("day streak")').first();
   // Post-collect state: when the user has already collected today's coins
   // (manually on another device or earlier in the day), the "day streak"
   // h3 disappears and the page shows "Earn more coins" instead. Counts as
   // logged-in for the purpose of this race so we don't false-positive into
   // the login flow against an already-authenticated session.
-  const collectedToday = page.locator(STRUCT_LOGGED_IN_DONE + ', button:has-text("Earn more coins")');
+  const collectedToday = page.locator(STRUCT_LOGGED_IN_DONE + ', button:has-text("Earn more coins")').first();
   // AliExpress mobile sometimes hangs on initial load — a manual F5 recovers it.
   // Auto-reload up to 3 times if neither the login button nor either logged-in
   // marker shows up within a short window. Track which marker resolved so we
@@ -133,6 +137,11 @@ const auth = async url => {
             h3: grab('h3'),
             buttons: grab('button'),
             anchorsWithLog: grab('a[href*="login" i], a[href*="signin" i]'),
+            // The 2026-10 redesign has no headings or buttons at all, so
+            // the grabs above came back empty on a fully rendered page
+            // (#170/#171). Text + aecoin-* class names show what's there.
+            text: (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 300),
+            aecoinClasses: [...new Set(Array.from(document.querySelectorAll('[class*="aecoin-"]')).flatMap(el => Array.from(el.classList)).filter(c => c.startsWith('aecoin-')).map(c => c.replace(/-[A-Za-z0-9_]{4,6}$/, '')))].slice(0, 40),
           };
         });
         console.error('AliExpress page diagnostic dump (none of {Log in button, "day streak" h3, "Earn more coins" button} matched):');
@@ -243,27 +252,40 @@ const pre_auth = {
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
     };
-    await page.waitForResponse(r => r.request().method() === 'POST' && r.url().startsWith('https://acs.aliexpress.com/h5/mtop.aliexpress.coin.execute/'))
-      .then(async r => {
-        d = await r.json();
-        const inner = d?.data?.data;
-        if (Array.isArray(inner)) {
-          const entry = inner.find(e => e?.name === 'userCoinsNum');
-          userCoinsNum = entry ? toCoinNum(entry.value) : null;
-        } else if (inner && typeof inner === 'object') {
-          userCoinsNum = toCoinNum(inner.userCoinsNum);
-        }
-        if (userCoinsNum == null) {
-          // Surface the actual shape so the next run's log tells us how
-          // to extend the parser. Truncated to 300 chars to avoid
-          // dumping the entire response.
-          const dump = (() => { try { return JSON.stringify(inner)?.slice(0, 300); } catch { return String(inner); } })();
-          console.log('Total (coins): null — response shape:', dump);
-        } else {
-          console.log('Total (coins):', userCoinsNum);
-        }
+    const extractCoins = inner => {
+      if (Array.isArray(inner)) {
+        const entry = inner.find(e => e?.name === 'userCoinsNum');
+        return entry ? toCoinNum(entry.value) : null;
+      }
+      if (inner && typeof inner === 'object') return toCoinNum(inner.userCoinsNum);
+      return null;
+    };
+    // Since the 2026-10 redesign coin.execute answers with the string
+    // "Initialization Succeeded" and the balance comes from
+    // query.user.coin.num instead (#170/#171). Watch both and take the
+    // first response that carries a userCoinsNum.
+    const COIN_APIS = [
+      'https://acs.aliexpress.com/h5/mtop.aliexpress.coin.execute/',
+      'https://acs.aliexpress.com/h5/mtop.aliexpress.query.user.coin.num/',
+    ];
+    let lastInner;
+    await page.waitForResponse(async r => {
+      if (!COIN_APIS.some(u => r.url().startsWith(u))) return false;
+      try { d = await r.json(); } catch { return false; }
+      lastInner = d?.data?.data;
+      return extractCoins(lastInner) != null;
+    })
+      .then(_ => {
+        userCoinsNum = extractCoins(lastInner);
+        console.log('Total (coins):', userCoinsNum);
       })
-      .catch(e => console.error('Total (coins): error:', e, 'data:', d));
+      .catch(e => {
+        // Surface the last shape seen so the next run's log tells us how
+        // to extend the parser. Truncated to 300 chars to avoid dumping
+        // the entire response.
+        const dump = (() => { try { return JSON.stringify(lastInner)?.slice(0, 300); } catch { return String(lastInner); } })();
+        console.error('Total (coins): not found —', e.message.split('\n')[0], '— last response shape:', dump);
+      });
   },
 };
 
@@ -275,7 +297,7 @@ const coins = async () => {
   // #74 (Buddinski88) timed out on the English-text selector on a non-
   // English account; this resolves the same root cause as #72.
   const collectBtn = page.locator('#signButton[class*="aecoin-checkInButton"], button:has-text("Collect")');
-  const moreBtn = page.locator('#signButton[class*="aecoin-taskButton"], button:has-text("Earn more coins")');
+  const moreBtn = page.locator('#signButton[class*="aecoin-taskButton"], [class*="aecoin-today-checked"], [class*="aecoin-isTodayChecked"], button:has-text("Earn more coins")').first();
   await Promise.race([
     collectBtn.click({ force: true }).then(_ => { collected = true; console.log('Collected coins for today!'); }),
     moreBtn.waitFor().then(_ => console.log('No more coins to collect today!')),

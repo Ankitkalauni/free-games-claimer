@@ -4,6 +4,19 @@ Release notes for [Feldorn's Free Games Claimer](README.md). Most recent at the 
 
 ---
 
+## What's new in 2.12.18
+
+**Fix: AliExpress failed with "page never finished loading" after the day's coins were collected (#170, #171).**
+
+AliExpress has redesigned the mobile coin page. Once today's coins are collected, the new page has no `#signButton`, no buttons and no "day streak" heading, so none of the claimer's markers matched. Each run then reloaded the page three times and failed with an empty diagnostic dump, even though the page had loaded fine. The first run of the day still collected the coins; every run after that failed.
+
+- Run and **Check** now recognise the redesigned page's "checked in today" state, so a run after collecting reports "No more coins to collect today!" instead of failing.
+- The coin balance is read from the API the new page uses. It showed as `null` / 0 coins since the redesign.
+- If the page changes again, the diagnostic dump now includes the page text and its `aecoin-*` class names instead of only headings and buttons.
+- Not verified yet: collecting on the new page before today's check-in. The first run on 2026-10-25 collected with the existing markers.
+
+---
+
 ## What's new in 2.12.17
 
 **Fix: Epic cookie import now says why it fails when the export is missing Epic's account login (#162, #163).**
