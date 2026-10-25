@@ -4,6 +4,17 @@ Release notes for [Feldorn's Free Games Claimer](README.md). Most recent at the 
 
 ---
 
+## What's new in 2.12.19
+
+**Fix: noVNC could stay dead for 10+ minutes after every container start on some hosts (#172).**
+
+On Proxmox LXC and some newer Docker/systemd setups, the noVNC viewer stayed on "Connecting..." after every restart, while websockify (the program that bridges noVNC to the VNC server) sat at 100% CPU. websockify was started with `-D` (daemon mode), which first tries to close every possible file descriptor up to the container's hard open-files limit, and only starts listening after that. On those hosts the limit is about a billion, so that loop runs for minutes before noVNC can connect. Most Docker hosts use a much lower limit, so they never saw it.
+
+- websockify now starts without `-D`. It was already started in the background, so the daemon step wasn't needed.
+- Its output now goes to `data/websockify.log` instead of being discarded, so a future noVNC problem leaves a trace.
+
+---
+
 ## What's new in 2.12.18
 
 **Fix: AliExpress failed with "page never finished loading" after the day's coins were collected (#170, #171).**
